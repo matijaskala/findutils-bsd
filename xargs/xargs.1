@@ -1,4 +1,4 @@
-.\"	$OpenBSD: xargs.1,v 1.28 2014/06/04 06:48:33 jmc Exp $
+.\"	$OpenBSD: xargs.1,v 1.29 2020/07/19 13:19:25 schwarze Exp $
 .\"	$FreeBSD: xargs.1,v 1.30 2003/05/21 21:07:28 ru Exp $$
 .\"
 .\" Copyright (c) 1990, 1991, 1993
@@ -34,7 +34,7 @@
 .\"
 .\"	@(#)xargs.1	8.1 (Berkeley) 6/6/93
 .\"
-.Dd $Mdocdate: June 4 2014 $
+.Dd $Mdocdate: July 19 2020 $
 .Dt XARGS 1
 .Os
 .Sh NAME
@@ -92,7 +92,7 @@ Any single character, including newlines, may be escaped by a backslash.
 .Pp
 The options are as follows:
 .Bl -tag -width Ds
-.It Fl 0
+.It Fl 0 , Fl -null
 Change
 .Nm
 to expect NUL
@@ -186,7 +186,7 @@ If EOF is reached and fewer than
 lines have been read then
 .Ar utility
 will be called with the available lines.
-.It Fl n Ar number
+.It Fl n Ar number , Fl -max-args= Ns Ar number
 Set the maximum number of arguments taken from standard input for each
 invocation of
 .Ar utility .
@@ -212,13 +212,18 @@ in the child process before executing the command.
 This is useful if you want
 .Nm
 to run an interactive application.
-.It Fl P Ar maxprocs
+.It Fl P Ar maxprocs , Fl -max-procs= Ns Ar maxprocs
 Parallel mode: run at most
 .Ar maxprocs
 invocations of
 .Ar utility
 at once.
-.It Fl p
+If
+.Ar maxprocs
+is set to 0,
+.Nm
+will run as many processes as possible.
+.It Fl p , Fl -interactive
 Echo each command to be executed and ask the user whether it should be
 executed.
 An affirmative response,
@@ -227,6 +232,10 @@ in the POSIX locale,
 causes the command to be executed, any other response causes it to be
 skipped.
 No commands are executed if the process is not attached to a terminal.
+.It Fl r , Fl -no-run-if-empty
+Do not run the command if there are no arguments.
+Normally the command is executed at least once
+even if there are no arguments.
 .It Fl R Ar replacements
 Specify the maximum number of arguments that
 .Fl I
@@ -234,10 +243,6 @@ will do replacement in.
 If
 .Ar replacements
 is negative, the number of arguments in which to replace is unbounded.
-.It Fl r
-Do not run the command if there are no arguments.
-Normally the command is executed at least once
-even if there are no arguments.
 .It Fl S Ar replsize
 Specify the amount of space (in bytes) that
 .Fl I
@@ -245,7 +250,7 @@ can use for replacements.
 The default for
 .Ar replsize
 is 255.
-.It Fl s Ar size
+.It Fl s Ar size , Fl -max-chars= Ns Ar size
 Set the maximum number of bytes for the command line length provided to
 .Ar utility .
 The sum of the length of the utility name, the arguments passed to
@@ -259,10 +264,10 @@ The current default value for
 is
 .Dv ARG_MAX
 - 4096.
-.It Fl t
+.It Fl t , Fl -verbose
 Echo the command to be executed to standard error immediately before it
 is executed.
-.It Fl x
+.It Fl x , Fl -exit
 Force
 .Nm
 to terminate immediately if a command line containing

@@ -1,4 +1,4 @@
-/*	$OpenBSD: xargs.c,v 1.34 2018/06/12 15:24:31 millert Exp $	*/
+/*	$OpenBSD: xargs.c,v 1.35 2020/07/19 13:19:25 schwarze Exp $	*/
 /*	$FreeBSD: xargs.c,v 1.51 2003/05/03 19:09:11 obrien Exp $	*/
 
 /*-
@@ -42,6 +42,7 @@
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <langinfo.h>
 #include <locale.h>
 #include <paths.h>
@@ -74,6 +75,22 @@ static size_t inpsize;
 
 extern char **environ;
 
+static const char *optstr = "+0E:I:J:L:n:oP:pR:S:s:rtx";
+
+static const struct option long_options[] =
+{
+	{"exit",		no_argument,		NULL,	'x'},
+	{"interactive",		no_argument,		NULL,	'p'},
+	{"max-args",		required_argument,	NULL,	'n'},
+	{"max-chars",		required_argument,	NULL,	's'},
+	{"max-procs",		required_argument,	NULL,	'P'},
+	{"no-run-if-empty",	no_argument,		NULL,	'r'},
+	{"null",		no_argument,		NULL,	'0'},
+	{"verbose",		no_argument,		NULL,	't'},
+
+	{NULL,			no_argument,		NULL,	0},
+};
+
 int
 main(int argc, char *argv[])
 {
@@ -89,7 +106,7 @@ main(int argc, char *argv[])
 	eofstr = "";
 	Jflag = nflag = 0;
 
-	(void)setlocale(LC_MESSAGES, "");
+	(void)setlocale(LC_ALL, "");
 
 	/*
 	 * POSIX.2 limits the exec line length to ARG_MAX - 2K.  Running that
@@ -114,7 +131,7 @@ main(int argc, char *argv[])
 		nline -= strlen(*ep++) + 1 + sizeof(*ep);
 	}
 	maxprocs = 1;
-	while ((ch = getopt(argc, argv, "+0E:I:J:L:n:oP:pR:rS:s:tx")) != -1)
+	while ((ch = getopt_long(argc, argv, optstr, long_options, NULL)) != -1)
 		switch (ch) {
 		case 'E':
 			eofstr = optarg;
@@ -503,9 +520,9 @@ prerun(int argc, char *argv[])
 	/*
 	 * Free the input line buffer, if we have one.
 	 */
-		free(inpline);
-		inpline = NULL;
-	}
+	free(inpline);
+	inpline = NULL;
+}
 
 static void
 run(char **argv)
@@ -605,11 +622,11 @@ waitchildren(const char *name, int waitall)
 					    signalnamestr(WTERMSIG(status)));
 				else
 					warnx("%s terminated by signal %d",
-			    name, WTERMSIG(status));
-	}
+					    name, WTERMSIG(status));
+			}
 			exit(125);
-}
-}
+		}
+	}
 	if (pid == -1 && errno != ECHILD)
 		err(1, "waitpid");
 }
@@ -621,22 +638,23 @@ static int
 prompt(void)
 {
 	regex_t cre;
-	size_t rsize;
+	size_t rsize = 0;
 	int match;
-	char *response;
+	char *response = NULL;
 	FILE *ttyfp;
 
 	if ((ttyfp = fopen(_PATH_TTY, "r")) == NULL)
 		return (2);	/* Indicate that the TTY failed to open. */
 	(void)fprintf(stderr, "?...");
 	(void)fflush(stderr);
-	if ((response = fgetln(ttyfp, &rsize)) == NULL ||
-	    regcomp(&cre, nl_langinfo(YESEXPR), 0) != 0) {
+	if (getline(&response, &rsize, ttyfp) < 0 ||
+	    regcomp(&cre, nl_langinfo(YESEXPR), REG_EXTENDED) != 0) {
+		free(response);
 		(void)fclose(ttyfp);
 		return (0);
 	}
-	response[rsize - 1] = '\0';
 	match = regexec(&cre, response, 0, NULL, 0);
+	free(response);
 	(void)fclose(ttyfp);
 	regfree(&cre);
 	return (match == 0);
