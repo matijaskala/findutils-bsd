@@ -6,3 +6,8 @@ find: find.c function.c ls.c main.c misc.c operator.c option.c getdate.c ../pwca
 
 getdate.c: getdate.y
 	yacc $< -o $@
+
+clean: clean-generated
+
+clean-generated:
+	$(RM) getdate.c
