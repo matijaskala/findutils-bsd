@@ -285,17 +285,17 @@ Undefined behavior may occur if
 .Ar utility
 reads from the standard input.
 .Pp
-The
-.Nm
-utility exits immediately (without processing any further input) if a
-command line cannot be assembled,
-.Ar utility
-cannot be invoked, an invocation of
+If a command line cannot be assembled, or
+cannot be invoked, or if an invocation of
 .Ar utility
 is terminated by a signal,
 or an invocation of
 .Ar utility
-exits with a value of 255.
+exits with a value of 255, the
+.Nm
+utility stops processing input and exits after all invocations of
+.Ar utility
+finish processing.
 .Sh EXIT STATUS
 .Nm
 exits with one of the following values:

@@ -63,7 +63,17 @@ static int	prompt(void);
 static void	run(char **);
 static void	usage(void);
 void		strnsubst(char **, const char *, const char *, size_t);
+static pid_t	xwait(int block, int *status);
+static void	xexit(const char *, const int);
 static void	waitchildren(const char *, int);
+static void	pids_init(void);
+static int	pids_empty(void);
+static int	pids_full(void);
+static void	pids_add(pid_t pid);
+static int	pids_remove(pid_t pid);
+static int	findslot(pid_t pid);
+static int	findfreeslot(void);
+static void	clearslot(int slot);
 
 static char **av, **bxp, **ep, **endxp, **xp;
 static char *argp, *bbp, *ebp, *inpline, *p, *replstr;
@@ -72,6 +82,7 @@ static int count, insingle, indouble, oflag, pflag, tflag, Rflag, rval, zflag;
 static int cnt, Iflag, jfound, Lflag, Sflag, wasquoted, xflag, runeof = 1;
 static int curprocs, maxprocs;
 static size_t inpsize;
+static pid_t *childpids;
 
 extern char **environ;
 
@@ -222,6 +233,8 @@ main(int argc, char *argv[])
 	if (replstr != NULL && *replstr == '\0')
 		errx(1, "replstr may not be empty");
 
+	pids_init();
+
 	/*
 	 * Allocate pointers for the utility name, the utility arguments,
 	 * the maximum arguments to be read from stdin and the trailing
@@ -303,8 +316,7 @@ parse_input(int argc, char *argv[])
 		if (p == bbp) {
 			if (runeof)
 				prerun(0, av);
-			waitchildren(*argv, 1);
-			exit(rval);
+			xexit(*argv, rval);
 		}
 		goto arg1;
 	case '\0':
@@ -326,8 +338,10 @@ parse_input(int argc, char *argv[])
 			count++;
 
 		/* Quotes do not escape newlines. */
-arg1:		if (insingle || indouble)
-			errx(1, "unterminated quote");
+arg1:		if (insingle || indouble) {
+			warnx("unterminated quote");
+			xexit(*av, 1);
+		}
 arg2:
 		foundeof = *eofstr != '\0' &&
 		    strcmp(argp, eofstr) == 0;
@@ -360,8 +374,10 @@ arg2:
 				 */
 				inpsize = curlen + 2 + strlen(argp);
 				inpline = realloc(inpline, inpsize);
-				if (inpline == NULL)
-					errx(1, "realloc failed");
+				if (inpline == NULL) {
+					warnx("realloc failed");
+					xexit(*av, 1);
+				}
 				if (curlen == 1)
 					strlcpy(inpline, argp, inpsize);
 				else
@@ -378,17 +394,17 @@ arg2:
 		 */
 		if (xp == endxp || p > ebp || ch == EOF ||
 		    (Lflag <= count && xflag) || foundeof) {
-			if (xflag && xp != endxp && p > ebp)
-				errx(1, "insufficient space for arguments");
+			if (xflag && xp != endxp && p > ebp) {
+				warnx("insufficient space for arguments");
+				xexit(*av, 1);
+			}
 			if (jfound) {
 				for (avj = argv; *avj; avj++)
 					*xp++ = *avj;
 			}
 			prerun(argc, av);
-			if (ch == EOF || foundeof) {
-				waitchildren(*argv, 1);
-				exit(rval);
-			}
+			if (ch == EOF || foundeof)
+				xexit(*av, rval);
 			p = bbp;
 			xp = bxp;
 			count = 0;
@@ -412,8 +428,10 @@ arg2:
 		if (zflag)
 			goto addch;
 		/* Backslash escapes anything, is escaped by quotes. */
-		if (!insingle && !indouble && (ch = getchar()) == EOF)
-			errx(1, "backslash at EOF");
+		if (!insingle && !indouble && (ch = getchar()) == EOF) {
+			warnx("backslash at EOF");
+			xexit(*av, 1);
+		}
 		/* FALLTHROUGH */
 	default:
 addch:		if (p < ebp) {
@@ -422,11 +440,15 @@ addch:		if (p < ebp) {
 		}
 
 		/* If only one argument, not enough buffer space. */
-		if (bxp == xp)
-			errx(1, "insufficient space for argument");
+		if (bxp == xp) {
+			warnx("insufficient space for argument");
+			xexit(*av, 1);
+		}
 		/* Didn't hit argument limit, so if xflag object. */
-		if (xflag)
-			errx(1, "insufficient space for arguments");
+		if (xflag) {
+			warnx("insufficient space for arguments");
+			xexit(*av, 1);
+		}
 
 		if (jfound) {
 			for (avj = argv; *avj; avj++)
@@ -469,16 +491,20 @@ prerun(int argc, char *argv[])
 	 * a NULL at the tail.
 	 */
 	tmp = calloc(argc + 1, sizeof(char *));
-	if (tmp == NULL)
-		err(1, NULL);
+	if (tmp == NULL) {
+		warn(NULL);
+		xexit(*argv, 1);
+	}
 	tmp2 = tmp;
 
 	/*
 	 * Save the first argument and iterate over it, we
 	 * cannot do strnsubst() to it.
 	 */
-	if ((*tmp++ = strdup(*avj++)) == NULL)
-		err(1, NULL);
+	if ((*tmp++ = strdup(*avj++)) == NULL) {
+		warn(NULL);
+		xexit(*argv, 1);
+	}
 
 	/*
 	 * For each argument to utility, if we have not used up
@@ -495,8 +521,10 @@ prerun(int argc, char *argv[])
 			if (repls > 0)
 				repls--;
 		} else {
-			if ((*tmp = strdup(*tmp)) == NULL)
-				err(1, NULL);
+			if ((*tmp = strdup(*tmp)) == NULL) {
+				warn(NULL);
+				xexit(*argv, 1);
+			}
 			tmp++;
 		}
 	}
@@ -564,7 +592,8 @@ run(char **argv)
 exec:
 	switch (pid = vfork()) {
 	case -1:
-		err(1, "vfork");
+		warn("vfork");
+		xexit(*argv, 1);
 	case 0:
 		if (oflag) {
 			if ((fd = open(_PATH_TTY, O_RDONLY)) == -1) {
@@ -585,8 +614,38 @@ exec:
 		warn("%s", argv[0]);
 		_exit(errno == ENOENT ? 127 : 126);
 	}
-	curprocs++;
+	pids_add(pid);
 	waitchildren(*argv, 0);
+}
+
+/*
+ * Wait for a tracked child to exit and return its pid and exit status.
+ *
+ * Ignores (discards) all untracked child processes.
+ * Returns -1 and sets errno to ECHILD if no tracked children exist.
+ * If block is set, waits indefinitely for a child process to exit.
+ * If block is not set and no children have exited, returns 0 immediately.
+ */
+static pid_t
+xwait(int block, int *status) {
+	pid_t pid;
+
+	if (pids_empty()) {
+		errno = ECHILD;
+		return -1;
+	}
+
+	while ((pid = waitpid(-1, status, block ? 0 : WNOHANG)) > 0)
+		if (pids_remove(pid))
+			break;
+
+	return pid;
+}
+
+static void
+xexit(const char *name, const int exit_code) {
+	waitchildren(name, 1);
+	exit(exit_code);
 }
 
 static void
@@ -594,10 +653,9 @@ waitchildren(const char *name, int waitall)
 {
 	pid_t pid;
 	int status;
+	int cause_exit = 0;
 
-	while ((pid = waitpid(-1, &status, !waitall && curprocs < maxprocs ?
-	    WNOHANG : 0)) > 0) {
-		curprocs--;
+	while ((pid = xwait(waitall || pids_full(), &status)) > 0) {
 		/*
 		 * According to POSIX, we have to exit if the utility exits
 		 * with a 255 status, or is interrupted by a signal.
@@ -608,10 +666,14 @@ waitchildren(const char *name, int waitall)
 		if (WIFEXITED(status)) {
 			if (WEXITSTATUS(status) == 255) {
 				warnx("%s exited with status 255", name);
-				exit(124);
+				if (!cause_exit)
+					cause_exit = 124;
+				waitall = 1;
 			} else if (WEXITSTATUS(status) == 127 ||
 			    WEXITSTATUS(status) == 126) {
-				exit(WEXITSTATUS(status));
+				if (!cause_exit)
+					cause_exit = WEXITSTATUS(status);
+				waitall = 1;
 			} else if (WEXITSTATUS(status) != 0) {
 				rval = 123;
 			}
@@ -624,11 +686,94 @@ waitchildren(const char *name, int waitall)
 					warnx("%s terminated by signal %d",
 					    name, WTERMSIG(status));
 			}
-			exit(125);
+			if (!cause_exit)
+				cause_exit = 125;
+			waitall = 1;
 		}
 	}
+
+	if (cause_exit)
+		exit(cause_exit);
 	if (pid == -1 && errno != ECHILD)
 		err(1, "waitpid");
+}
+
+#define	NOPID	(0)
+
+static void
+pids_init()
+{
+	int i;
+
+	if ((childpids = malloc(maxprocs * sizeof(*childpids))) == NULL)
+	    errx(1, "malloc failed");
+
+	for (i = 0; i < maxprocs; i++)
+		clearslot(i);
+}
+
+static int
+pids_empty()
+{
+	return curprocs == 0;
+}
+
+static int
+pids_full()
+{
+	return curprocs >= maxprocs;
+}
+
+static void
+pids_add(pid_t pid)
+{
+	int slot;
+
+	slot = findfreeslot();
+	childpids[slot] = pid;
+	curprocs++;
+}
+
+static int
+pids_remove(pid_t pid)
+{
+	int slot;
+
+	if ((slot = findslot(pid)) < 0)
+	    return 0;
+
+	clearslot(slot);
+	curprocs--;
+	return 1;
+}
+
+static int
+findfreeslot()
+{
+	int slot;
+
+	if ((slot = findslot(NOPID)) < 0)
+		errx(1, "internal error: no free pid slot");
+
+	return slot;
+}
+
+static int
+findslot(pid_t pid)
+{
+	int slot;
+
+	for (slot = 0; slot < maxprocs; slot++)
+		if (childpids[slot] == pid)
+			return slot;
+
+	return -1;
+}
+
+static void
+clearslot(int slot)
+{
+	childpids[slot] = NOPID;
 }
 
 /*
