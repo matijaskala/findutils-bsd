@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <ctype.h>
 #include <err.h>
 #include <errno.h>
 #include <fts.h>
@@ -110,5 +111,5 @@ queryuser(char *argv[])
 		(void)fprintf(stderr, "\n");
 		(void)fflush(stderr);
 	}
-        return (rpmatch(resp) == 1);
+        return (tolower(*resp) == 'y');
 }

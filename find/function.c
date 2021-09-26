@@ -43,7 +43,6 @@ __FBSDID("$FreeBSD$");
 //#include <sys/ucred.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/acl.h>
 #include <sys/wait.h>
 #include <sys/mount.h>
 
@@ -130,7 +129,7 @@ find_parsenum(PLAN *plan, const char *option, char *vp, char *endch)
 	 * and endchar points to the beginning of the string we know we have
 	 * a syntax error.
 	 */
-	value = strtoq(str, &endchar, 10);
+	value = strtoll(str, &endchar, 10);
 	if (value == 0 && endchar == str)
 		errx(1, "%s: %s: illegal numeric value", option, vp);
 	if (endchar[0] && endch == NULL)
@@ -166,7 +165,7 @@ find_parsetime(PLAN *plan, const char *option, char *vp)
 		break;
 	}
 
-	value = strtoq(str, &unit, 10);
+	value = strtoll(str, &unit, 10);
 	if (value == 0 && unit == str) {
 		errx(1, "%s: %s: illegal time value", option, vp);
 		/* NOTREACHED */
@@ -200,7 +199,7 @@ find_parsetime(PLAN *plan, const char *option, char *vp)
 		str = unit + 1;
 		if (*str == '\0')	/* EOS */
 			break;
-		value = strtoq(str, &unit, 10);
+		value = strtoll(str, &unit, 10);
 		if (value == 0 && unit == str) {
 			errx(1, "%s: %s: illegal time value", option, vp);
 			/* NOTREACHED */
