@@ -701,25 +701,25 @@ waitchildren(const char *name, int waitall)
 #define	NOPID	(0)
 
 static void
-pids_init()
+pids_init(void)
 {
 	int i;
 
 	if ((childpids = malloc(maxprocs * sizeof(*childpids))) == NULL)
-	    errx(1, "malloc failed");
+		errx(1, "malloc failed");
 
 	for (i = 0; i < maxprocs; i++)
 		clearslot(i);
 }
 
 static int
-pids_empty()
+pids_empty(void)
 {
 	return curprocs == 0;
 }
 
 static int
-pids_full()
+pids_full(void)
 {
 	return curprocs >= maxprocs;
 }
