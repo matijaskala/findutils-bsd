@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <time.h>
 
 #include "find.h"
 
@@ -798,6 +799,18 @@ done:	*argvp = argv + 1;
 	return new;
 }
 
+int
+f_executable(PLAN *plan, FTSENT *entry)
+{
+	return access(entry->fts_path, X_OK) == 0;
+}
+
+PLAN *
+c_executable(OPTION *option, char ***argvp)
+{
+	return palloc(option);
+}
+
 /* Finish any pending -exec ... {} + functions. */
 void
 finish_execplus(void)
@@ -1390,6 +1403,220 @@ f_print0(PLAN *plan , FTSENT *entry)
 	fputs(entry->fts_path, stdout);
 	fputc('\0', stdout);
 	return 1;
+}
+
+int
+f_printf(PLAN *plan , FTSENT *entry)
+{
+	char buf[PATH_MAX > 64 ? PATH_MAX : 64];
+	char format[4];
+	char *i, *p;
+
+	i = plan->c_data;
+	for (;;)
+		switch (*i) {
+			case 0:
+				return 1;
+			case '%':
+				switch (*++i) {
+					case '%':
+						fputc('%', stdout);
+						i++;
+						continue;
+					case 'a':
+						fputs(ctime(&entry->fts_statp->st_atime), stdout);
+						i++;
+						continue;
+					case 'A':
+						format[0] = '%';
+						format[1] = *++i;
+						format[2] = 0;
+						if (strftime(buf, 64, format, localtime(&entry->fts_statp->st_atime)))
+							fputs(buf, stdout);
+						i++;
+						continue;
+					case 'b':
+						printf("%lld", (long long)entry->fts_statp->st_blocks);
+						i++;
+						continue;
+					case 'c':
+						fputs(ctime(&entry->fts_statp->st_ctime), stdout);
+						i++;
+						continue;
+					case 'C':
+						format[0] = '%';
+						format[1] = *++i;
+						format[2] = 0;
+						if (strftime(buf, sizeof buf, format, localtime(&entry->fts_statp->st_ctime)))
+							fputs(buf, stdout);
+						i++;
+						continue;
+					case 'd':
+						printf("%hd", entry->fts_level);
+						i++;
+						continue;
+					case 'D':
+						printf("%lld", (long long)entry->fts_statp->st_dev);
+						i++;
+						continue;
+					case 'f':
+						fputs(entry->fts_name, stdout);
+						i++;
+						continue;
+					case 'G':
+						printf("%lld", (long long)entry->fts_statp->st_gid);
+						i++;
+						continue;
+					case 'h':
+						strcpy(buf, entry->fts_path);
+						p = strrchr(buf, '/');
+						if (p)
+							*p = 0;
+						else {
+							buf[0] = '.';
+							buf[1] = 0;
+						}
+						fputs(buf, stdout);
+						i++;
+						continue;
+					case 'H':
+						strcpy(buf, entry->fts_path);
+						for (short i = entry->fts_level; i > 0; i--)
+							if ((p = strrchr(buf, '/')))
+								*p = 0;
+						fputs(buf, stdout);
+						i++;
+						continue;
+					case 'i':
+						printf("%lld", (long long)entry->fts_statp->st_ino);
+						i++;
+						continue;
+					case 'l':
+						readlink(entry->fts_path, buf, sizeof buf);
+						fputs(buf, stdout);
+						i++;
+						continue;
+					case 'm':
+						printf("%o", (int)entry->fts_statp->st_mode & 07777);
+						i++;
+						continue;
+					case 'n':
+						printf("%lld", (long long)entry->fts_statp->st_nlink);
+						i++;
+						continue;
+					case 'p':
+						fputs(entry->fts_path, stdout);
+						i++;
+						continue;
+					case 'P':
+						strcpy(buf, entry->fts_path);
+						for (short i = entry->fts_level; i > 0; i--)
+							if ((p = strrchr(buf, '/')))
+								*p = 0;
+						fputs(entry->fts_path + strlen(buf) + 1, stdout);
+						i++;
+						continue;
+					case 's':
+						printf("%lld", (long long)entry->fts_statp->st_size);
+						i++;
+						continue;
+					case 't':
+						fputs(ctime(&entry->fts_statp->st_mtime), stdout);
+						i++;
+						continue;
+					case 'T':
+						format[0] = '%';
+						format[1] = *++i;
+						format[2] = 0;
+						if (strftime(buf, 64, format, localtime(&entry->fts_statp->st_mtime)))
+							fputs(buf, stdout);
+						i++;
+						continue;
+					case 'U':
+						printf("%lld", (long long)entry->fts_statp->st_uid);
+						i++;
+						continue;
+					default:
+						fputc(*i++, stdout);
+						continue;
+				}
+				break;
+			case '\\':
+				switch (*++i) {
+					case 'a':
+						fputc('\a', stdout);
+						i++;
+						continue;
+					case 'b':
+						fputc('\b', stdout);
+						i++;
+						continue;
+					case 'c':
+						fflush(stdout);
+						return 1;
+					case 'f':
+						fputc('\f', stdout);
+						i++;
+						continue;
+					case 'n':
+						fputc('\n', stdout);
+						i++;
+						continue;
+					case 'r':
+						fputc('\r', stdout);
+						i++;
+						continue;
+					case 't':
+						fputc('\t', stdout);
+						i++;
+						continue;
+					case 'v':
+						fputc('\v', stdout);
+						i++;
+						continue;
+					case '\\':
+						fputc('\\', stdout);
+						i++;
+						continue;
+					case '0':
+					case '1':
+					case '2':
+					case '3':
+					case '4':
+					case '5':
+					case '6':
+					case '7':
+						strncpy(format, i, 3);
+						format[3] = 0;
+						fputc(strtol(format, &p, 8), stdout);
+						i += p - format;
+						continue;
+					default:
+						fputc('\\', stdout);
+						fputc(*i++, stdout);
+						continue;
+				}
+				break;
+			default:
+				fputc(*i++, stdout);
+				continue;
+		}
+}
+
+PLAN *
+c_printf(OPTION *option, char ***argvp )
+{
+	char *format;
+	PLAN *new;
+
+	isoutput = 1;
+	format = nextarg(option, argvp);
+	ftsoptions &= ~FTS_NOSTAT;
+
+	new = palloc(option);
+	new->c_data = format;
+
+	return new;
 }
 
 /* c_print0 is the same as c_print */

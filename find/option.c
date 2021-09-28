@@ -82,6 +82,7 @@ static OPTION const options[] = {
 	{ "-empty",	c_empty,	f_empty,	0 },
 	{ "-exec",	c_exec,		f_exec,		0 },
 	{ "-execdir",	c_exec,		f_exec,		F_EXECDIR },
+	{ "-executable",c_executable,	f_executable,	0 },
 	{ "-false",	c_simple,	f_false,	0 },
 #if HAVE_STRUCT_STAT_ST_FLAGS
 	{ "-flags",	c_flags,	f_flags,	0 },
@@ -153,7 +154,7 @@ static OPTION const options[] = {
 	{ "-perm",	c_perm,		f_perm,		0 },
 	{ "-print",	c_print,	f_print,	0 },
 	{ "-print0",	c_print,	f_print0,	0 },
-// -printf
+	{ "-printf",	c_printf,	f_printf,	0 },
 	{ "-prune",	c_simple,	f_prune,	0 },
 	{ "-quit",	c_simple,	f_quit,		0 },
 	{ "-regex",	c_regex,	f_regex,	0 },
