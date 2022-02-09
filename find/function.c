@@ -1658,10 +1658,7 @@ f_regex(PLAN *plan, FTSENT *entry)
 	len = strlen(str);
 	matched = 0;
 
-	pmatch.rm_so = 0;
-	pmatch.rm_eo = len;
-
-	errcode = regexec(pre, str, 1, &pmatch, REG_STARTEND);
+	errcode = regexec(pre, str, 1, &pmatch, 0);
 
 	if (errcode != 0 && errcode != REG_NOMATCH) {
 		regerror(errcode, pre, errbuf, sizeof errbuf);
